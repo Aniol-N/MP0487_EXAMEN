@@ -44,49 +44,59 @@ class UserController
     }
 
     public function login(): void
-{
-    if (!isset($_POST["email"], $_POST["password"])) {
-        $_SESSION['loggin'] = false;
-        $_SESSION['failMessage'] = [
-            'message' => "Email or password not provided.",
-            'context' => 'Failure to Login In'
-        ];
-        header("Location: ../View/Login.php");
-        exit();
-    }
+    {
+        if (!isset($_POST["email"], $_POST["password"])) {
+            $_SESSION['loggin'] = false;
+            $_SESSION['failMessage'] = [
+                'message' => "Email or password not provided.",
+                'context' => 'Failure to Login In'
+            ];
+            header("Location: ../View/Login.php");
+            exit();
+        }
 
-    $mail = $_POST["email"];
-    $password = $_POST["password"];
+        $mail = $_POST["email"];
+        $password = $_POST["password"];
 
-    $stmt = $this->conn->prepare("
+        $stmt = $this->conn->prepare("
         SELECT Administrador, Contrasenya 
         FROM Usuario 
         WHERE email = :mail
     ");
-    $stmt->bindParam(':mail', $mail, PDO::PARAM_STR);
-    $stmt->execute();
+        $stmt->bindParam(':mail', $mail, PDO::PARAM_STR);
+        $stmt->execute();
 
-    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if ($user) {
+        if ($user) {
 
-        $admin = $user["Administrador"];
-        $hashPassword = $user["Contrasenya"];
+            $admin = $user["Administrador"];
+            $hashPassword = $user["Contrasenya"];
 
-        // Password hashed correctly
-        if (password_verify($password, $hashPassword)) {
-            $this->successLogin($mail, $admin);
-            return;
+            // Password hashed correctly
+            if (password_verify($password, $hashPassword)) {
+                $this->successLogin($mail, $admin);
+                return;
+            }
+
+            // Legacy plaintext password
+            if ($hashPassword === $password) {
+                $this->updatePasswordsToHash($password, $mail);
+                $this->successLogin($mail, $admin);
+                return;
+            }
+
+            // Wrong password
+            $_SESSION['loggin'] = false;
+            $_SESSION['failMessage'] = [
+                'message' => "Incorrect email or password.",
+                'context' => 'Failure to Login In'
+            ];
+            header("Location: ../View/Login.php");
+            exit();
         }
 
-        // Legacy plaintext password
-        if ($hashPassword === $password) {
-            $this->updatePasswordsToHash($password, $mail);
-            $this->successLogin($mail, $admin);
-            return;
-        }
-
-        // Wrong password
+        // No such user
         $_SESSION['loggin'] = false;
         $_SESSION['failMessage'] = [
             'message' => "Incorrect email or password.",
@@ -95,16 +105,6 @@ class UserController
         header("Location: ../View/Login.php");
         exit();
     }
-
-    // No such user
-    $_SESSION['loggin'] = false;
-    $_SESSION['failMessage'] = [
-        'message' => "Incorrect email or password.",
-        'context' => 'Failure to Login In'
-    ];
-    header("Location: ../View/Login.php");
-    exit();
-}
 
 
     public function updatePasswordsToHash($password, $mail): void
@@ -158,11 +158,12 @@ class UserController
     {
         // Array that will save all the error of the functions that validate: name, surname, mail...
         $errors = [];
-
         $file = "";
         $name = $_POST['name'];
         $surname = $_POST['surname'];
-        $mail = $_POST['username'];
+        // se estaba mezclando usename con email ERROR1
+        // $username = $_POST['username'];
+        $mail = $_POST['Email'];
         $password = $_POST['password'];
         $admin = isset($_POST['admin']) ? 1 : 0;
         $minumPasswordLength = 4;
@@ -173,7 +174,7 @@ class UserController
         }
 
         // Check if the email is already in the database
-        $stmt = $this->conn->prepare("SELECT Email FROM Usuario WHERE email = :mail");
+        $stmt = $this->conn->prepare(query: "SELECT Email FROM usuario WHERE Email = :mail");
         $stmt->bindParam(':mail', $mail);
         $stmt->execute();
         // Check if the query have at least one result
@@ -186,7 +187,7 @@ class UserController
             $errors['incorrectPassword'] = "The password must have at least one number, one letter, and contain only alphanumeric characters.";
         }
         // Chek if the password is equals or minus of 4 charecteres
-        if (strlen($password) <= $minumPasswordLength){
+        if (strlen($password) <= $minumPasswordLength) {
             $errors['incorrectLength'] = "The password must have at least 5 characteres";
         }
 
@@ -223,7 +224,8 @@ class UserController
 
         $hashPassword = password_hash($password, PASSWORD_DEFAULT);
         try {
-            $stmt = $this->conn->prepare("INSERT INTO Usuario (`Nombre`, `Apellido`, `Email`, `Password`, `Imagen`, `Administrador`) VALUES (:name, :surname, :mail, :password, :icon, :admin)");
+            // CONTRASENYA !!!
+            $stmt = $this->conn->prepare("INSERT INTO usuario (`Nombre`, `Apellido`, `Email`, `Contrasenya`, `Imagen`, `Administrador`) VALUES (:name, :surname, :mail, :password, :icon, :admin)");
             $stmt->bindParam(':name', $name);
             $stmt->bindParam(':surname', $surname);
             $stmt->bindParam(':mail', $mail);
@@ -234,14 +236,14 @@ class UserController
             echo __LINE__;
             $stmt->execute();
             // Check if the query insert any data
-            
+
             if ($stmt->rowCount() > 0) {
                 // Create new session that save if it is admin, mail of the account and inform that it is logged
                 $_SESSION['loggin'] = true;
                 $_SESSION['admin'] = $admin;
                 $_SESSION['user'] = $mail;
                 $_SESSION['icon'] = $file;
-                
+
                 $this->conn = null;
                 // redirect to home
                 header("Location: ../View/Home.php");
